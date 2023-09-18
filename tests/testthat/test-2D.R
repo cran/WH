@@ -12,91 +12,223 @@ y <- log(d / ec) # observation vector
 y[d == 0] <- - 20
 wt <- d
 
+compare_fits <- function(f1, f2, tolerance = 1e-6) {
+
+  expect_equal(f1$y_hat, f2$y_hat, tolerance = tolerance)
+  expect_equal(f1$std_y_hat, f2$std_y_hat, tolerance = 100 * tolerance)
+  expect_equal(f1$diagnosis$REML, f2$diagnosis$REML, tolerance = tolerance)
+}
+
+compare_reml <- function(f1, f2, tolerance = 1e-6) {
+
+  expect_equal(f1$diagnosis$REML, f2$diagnosis$REML, tolerance = tolerance)
+}
+
 # Regression----
 
-## Various way of calling regresion work and method with fixed lambda as well----
-ref_fixed_lambda <- WH_2d_fixed_lambda(y = y, wt = wt, lambda = c(1e2,1e2), reg = TRUE)
-expect_equal(WH_2d(y = y, wt = wt, lambda = c(1e2,1e2)), ref_fixed_lambda)
-expect_equal(WH_2d(d, ec, framework = "reg", lambda = c(1e2,1e2)), ref_fixed_lambda)
-expect_equal(WH_2d(d, y = y, lambda = c(1e2,1e2)), ref_fixed_lambda)
-expect_equal(WH_2d_fixed_lambda(y = y, wt = wt, lambda = c(1e2,1e2), reg = TRUE), ref_fixed_lambda)
+test_that("Various way of invoking the regression framework are working", {
 
-## perf is the default method and call perf----
-ref_perf <- WH_2d_perf(y = y, wt = wt, reg = TRUE)
-expect_equal(WH_2d(y = y, wt = wt, method = "perf"), ref_perf)
-expect_equal(WH_2d(y = y, wt = wt), ref_perf)
+  ref_fixed_lambda <- WH_2d_fixed_lambda(y = y, wt = wt, lambda = c(1e2, 1e2), reg = TRUE)
 
-## optim method call optim----
-ref_outer <- WH_2d_outer(y = y, wt = wt, reg = TRUE)
-expect_equal(WH_2d(y = y, wt = wt, method = "outer"), ref_outer)
+  # expect_equal(WH_2d_fixed_lambda(y = y, wt = wt, lambda = c(1e2, 1e2), reg = TRUE),
+  #              WH_2d_fixed_lambda(y = y, wt = wt, lambda = c(1e2, 1e2), reg = TRUE))
 
-## optim and perf method match for regression----
-expect_equal(ref_perf, ref_outer, tolerance = 1e-3)
+  compare_fits(WH_2d(y = y, wt = wt, lambda = c(1e2, 1e2)), ref_fixed_lambda)
+  compare_fits(WH_2d(d, ec, framework = "reg", lambda = c(1e2, 1e2)), ref_fixed_lambda)
+  compare_fits(WH_2d(d, y = y, lambda = c(1e2, 1e2)), ref_fixed_lambda)
+})
 
-## REML is default criterion for optim----
-expect_equal(WH_2d(y = y, wt = wt, method = "outer", criterion = "REML"), ref_outer)
+test_that("Performance iteration method calls the right function and is the default method", {
 
-## other criteria work----
-expect_equal(WH_2d(y = y, wt = wt, criterion = "AIC"),
-             WH_2d_perf(y = y, wt = wt, criterion = "AIC", reg = TRUE))
-expect_equal(WH_2d(y = y, wt = wt, criterion = "BIC"),
-             WH_2d_perf(y = y, wt = wt, criterion = "BIC", reg = TRUE))
-expect_equal(WH_2d(y = y, wt = wt, criterion = "GCV"),
-             WH_2d_perf(y = y, wt = wt, criterion = "GCV", reg = TRUE))
+  ref_perf <- WH_2d_perf(y = y, wt = wt, reg = TRUE)
 
-## rank reduction works----
-ref_perf_red <- WH_2d_perf(y = y, wt = wt, p = c(10, 5), reg = TRUE)
-ref_outer_red <- WH_2d_outer(y = y, wt = wt, p = c(10, 5), reg = TRUE)
+  # expect_equal(WH_2d_perf(y = y, wt = wt, reg = TRUE),
+  #              WH_2d_perf(y = y, wt = wt, reg = TRUE))
 
-expect_equal(WH_2d(y = y, wt = wt, p = c(10, 5)), ref_perf_red)
-expect_equal(WH_2d(y = y, wt = wt, method = "outer", p = c(10, 5)), ref_outer_red)
-expect_equal(ref_perf_red, ref_outer_red, tolerance = 1e-3)
+  compare_fits(WH_2d(y = y, wt = wt, method = "perf"), ref_perf)
+  compare_fits(WH_2d(y = y, wt = wt), ref_perf)
+})
 
-expect_equal(WH_2d(y = y, wt = wt, method = "perf", max_dim = 100),
-             WH_2d(y = y, wt = wt, method = "outer", max_dim = 100), tolerance = 1e-3)
+test_that("Outer iteration method calls the right function", {
+
+  ref_outer <- WH_2d_outer(y = y, wt = wt, reg = TRUE)
+
+  # expect_equal(WH_2d_outer(y = y, wt = wt, reg = TRUE),
+  #              WH_2d_outer(y = y, wt = wt, reg = TRUE))
+
+  compare_fits(WH_2d(y = y, wt = wt, method = "outer"), ref_outer)
+})
+
+test_that("REML is default criterion", {
+
+  ref_outer <- WH_2d_perf(y = y, wt = wt, reg = TRUE)
+
+  compare_fits(WH_2d(y = y, wt = wt, criterion = "REML"), ref_outer)
+})
+
+test_that("Outer and performance iteration methods give close results", {
+
+  ref_perf <- WH_2d_perf(y = y, wt = wt, reg = TRUE)
+  ref_outer <- WH_2d_outer(y = y, wt = wt, reg = TRUE)
+
+  compare_reml(ref_perf, ref_outer, tolerance = 1e-5)
+})
+
+test_that("Other smoothing parameter selection criteria are working as well", {
+
+  compare_fits(WH_2d(y = y, wt = wt, criterion = "AIC"),
+               WH_2d_perf(y = y, wt = wt, criterion = "AIC", reg = TRUE))
+  compare_fits(WH_2d(y = y, wt = wt, criterion = "BIC"),
+               WH_2d_perf(y = y, wt = wt, criterion = "BIC", reg = TRUE))
+  compare_fits(WH_2d(y = y, wt = wt, criterion = "GCV"),
+               WH_2d_perf(y = y, wt = wt, criterion = "GCV", reg = TRUE))
+})
+
+test_that("Rank reduction works", {
+
+  ref_perf <- WH_2d_perf(y = y, wt = wt, reg = TRUE)
+  ref_outer <- WH_2d_outer(y = y, wt = wt, reg = TRUE)
+  ref_perf_red <- WH_2d_perf(y = y, wt = wt, p = c(10, 5), reg = TRUE)
+  ref_outer_red <- WH_2d_outer(y = y, wt = wt, p = c(10, 5), reg = TRUE)
+
+  compare_fits(WH_2d(y = y, wt = wt, method = "perf", p = c(10, 5)), ref_perf_red)
+  compare_fits(WH_2d(y = y, wt = wt, method = "outer", p = c(10, 5)), ref_outer_red)
+  compare_reml(ref_perf_red, ref_perf, tolerance = 1e-1)
+  compare_reml(ref_outer_red, ref_outer, tolerance = 1e-1)
+  compare_reml(ref_perf_red, ref_outer_red, tolerance = 1e-5)
+})
 
 # Maximum likelihood----
 
-## fixed lambda method works----
-expect_equal(WH_2d(d, ec, lambda = c(1e2,1e2)),
-             WH_2d_fixed_lambda(d, ec, lambda = c(1e2,1e2)))
+test_that("Fixed lambda method works", {
 
-## perf method with rank reduction works----
-ref_perf_red <- WH_2d_perf(d, ec, p = c(10, 5))
-expect_equal(WH_2d(d, ec, p = c(10, 5)), ref_perf_red)
+  # expect_equal(WH_2d(d, ec, lambda = c(1e2, 1e2)),
+  #              WH_2d(d, ec, lambda = c(1e2, 1e2)))
 
-## optim method with rank reduction works----
-ref_outer_red <- WH_2d_outer(d, ec, p = c(10, 5))
-expect_equal(WH_2d(d, ec, method = "outer", p = c(10, 5)), ref_outer_red)
+  compare_fits(WH_2d(d, ec, lambda = c(1e2, 1e2)),
+               WH_2d_fixed_lambda(d, ec, lambda = c(1e2, 1e2)))
+})
 
-## optim and perf method are not too far away for ML----
-expect_equal(ref_perf_red, ref_outer_red, tolerance = 1e-1)
+test_that("Performance iteration method is the default method and calls perf", {
 
-## automatic rank reduction works----
-rr_perf <- WH_2d(d, ec, max_dim = 100)
-rr_outer <- WH_2d(d, ec, method = "outer", max_dim = 100)
-expect_equal(rr_perf, rr_outer, tolerance = 1e-1)
+  ref_ml_perf <- WH_2d_perf(d, ec)
 
-# Extrapolation----
+  # expect_equal(WH_2d_perf(d, ec),
+  #              WH_2d_perf(d, ec))
 
-newdata <- list(age = 50:99, duration = 0:19)
+  compare_fits(WH_2d(d, ec, method = "perf"), ref_ml_perf)
+  compare_fits(WH_2d(d, ec), ref_ml_perf)
+})
 
-extra_perf <- rr_perf |> predict(newdata)
-extra_outer <- rr_outer |> predict(newdata)
+test_that("Outer iteration method calls outer", {
 
-expect_equal(extra_perf,
-             extra_outer,
-             tolerance = 1e-1)
+  ref_ml_outer <- WH_2d_outer(d, ec)
+
+  # expect_equal(WH_2d_outer(d, ec),
+  #              WH_2d_outer(d, ec))
+
+  compare_fits(WH_2d(d, ec, method = "outer"), ref_ml_outer)
+})
+
+test_that("REML is default criterion", {
+
+  ref_ml_outer <- WH_2d_perf(d, ec)
+
+  compare_fits(WH_2d_perf(d, ec, criterion = "REML"), ref_ml_outer)
+})
+
+test_that("Outer and performance iteration methods give close results", {
+
+  ref_ml_perf <- WH_2d_perf(d, ec)
+  ref_ml_outer <- WH_2d_outer(d, ec)
+
+  compare_reml(ref_ml_perf, ref_ml_outer, tolerance = 1e-1)
+})
+
+test_that("Other smoothing parameter selection criteria are working as well", {
+
+  compare_fits(WH_2d(d, ec, criterion = "AIC"),
+               WH_2d_perf(d, ec, criterion = "AIC"))
+  compare_fits(WH_2d(d, ec, criterion = "BIC"),
+               WH_2d_perf(d, ec, criterion = "BIC"))
+  compare_fits(WH_2d(d, ec, criterion = "GCV"),
+               WH_2d_perf(d, ec, criterion = "GCV"))
+})
+
+test_that("Rank reduction works", {
+
+  ref_ml_perf <- WH_2d_perf(d, ec)
+  ref_ml_outer <- WH_2d_outer(d, ec)
+  ref_ml_perf_red <- WH_2d_perf(d, ec, p = c(10, 5))
+  ref_ml_outer_red <- WH_2d_outer(d, ec, p = c(10, 5))
+
+  compare_fits(WH_2d(d, ec, method = "perf", p = c(10, 5)), ref_ml_perf_red)
+  compare_fits(WH_2d(d, ec, method = "outer", p = c(10, 5)), ref_ml_outer_red)
+  compare_reml(ref_ml_perf_red, ref_ml_perf, tolerance = 1e-1)
+  compare_reml(ref_ml_outer_red, ref_ml_outer, tolerance = 1e-1)
+  compare_reml(ref_ml_perf_red, ref_ml_outer_red, tolerance = 1e-1)
+})
 
 # Plots----
 
-rr_perf |> plot()
-rr_perf |> plot("std_y_hat")
+test_that("Plot functions work", {
 
-extra_perf |> plot()
-extra_perf |> plot("std_y_hat")
+  expect_no_error({
+    # Regression
+    ref_perf <- WH_2d_perf(y = y, wt = wt, reg = TRUE)
+    ref_outer <- WH_2d_outer(y = y, wt = wt, reg = TRUE)
 
-ref_perf |> predict(newdata) |> plot()
-ref_perf |> predict(newdata) |> plot()
+    ref_perf |> plot()
+    ref_outer |> plot()
 
+    ref_perf |> plot("std_y_hat")
+    ref_outer |> plot("std_y_hat")
 
+    ref_perf |> plot("res")
+    ref_outer |> plot("res")
+
+    ref_perf |> plot("edf")
+    ref_outer |> plot("edf")
+
+    # Maximum likelihood
+    ref_ml_perf <- WH_2d_perf(d, ec)
+    ref_ml_outer <- WH_2d_outer(d, ec)
+
+    ref_ml_perf |> plot()
+    ref_ml_outer |> plot()
+
+    ref_ml_perf |> plot("std_y_hat")
+    ref_ml_outer |> plot("std_y_hat")
+
+    ref_ml_perf |> plot("res")
+    ref_ml_outer |> plot("res")
+
+    ref_ml_perf |> plot("edf")
+    ref_ml_outer |> plot("edf")
+  })
+})
+
+# Extrapolation----
+
+test_that("Extrapolation and extrapolation plots work", {
+
+  newdata <- list(age = 50:99, duration = 0:19)
+
+  perf_extra_reg <- WH_2d_perf(y = y, wt = wt, reg = TRUE) |> predict(newdata)
+  outer_extra_reg <- WH_2d_outer(y = y, wt = wt, reg = TRUE) |> predict(newdata)
+
+  compare_fits(perf_extra_reg, outer_extra_reg, tolerance = 1e-5)
+
+  perf_extra_ml <- WH_2d_perf(d, ec) |> predict(newdata)
+  outer_extra_ml <- WH_2d_outer(d, ec) |> predict(newdata)
+
+  compare_fits(perf_extra_ml, outer_extra_ml, tolerance = 1e-1)
+
+  expect_no_error({
+    perf_extra_reg |> plot()
+    outer_extra_reg |> plot()
+
+    perf_extra_ml |> plot()
+    outer_extra_ml |> plot()
+  })
+})

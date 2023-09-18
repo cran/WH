@@ -182,7 +182,7 @@ WH_1d <- function(d, ec, lambda, criterion, method, q = 2, framework, y, wt, qui
 
 #' 2D Whittaker-Henderson Smoothing
 #'
-#' #' Main package function to apply Whittaker-Henderson smoothing in a
+#' Main package function to apply Whittaker-Henderson smoothing in a
 #' bidimensional survival analysis framework. It takes as input a matrix of
 #' observed events and a matrix of associated central exposure, both depending
 #' on two covariates, and build a smooth version of the log-hazard rate.
@@ -377,7 +377,8 @@ WH_2d <- function(d, ec, lambda, criterion, method, max_dim = 200, p,
   if (missing(p)) {
 
     max_ratio <- sqrt(max_dim / (n[[2]] * n[[1]]))
-    p <- floor(pmin(max_ratio, 1) * n)
+    p <- as.integer(pmin(max_ratio, 1) * n)
+    names(p) <- if (framework == "reg") names(dimnames(y)) else names(dimnames(d))
   } else {
     if (!is.numeric(q) || length(q) != 2 || any(q <= 0) ||
         (max(abs(q - round(q))) > .Machine$double.eps ^ 0.5)) stop(
@@ -439,32 +440,20 @@ predict.WH_1d <- function(object, newdata = NULL, ...) {
   full_data <- sort(union(data, newdata))
 
   n <- length(data)
-  n_pred <- length(full_data)
-  n_new <- n_pred - n
+  n_inf <- sum(full_data < min(data))
+  n_sup <- sum(full_data > max(data))
+  n_tot <- n + n_inf + n_sup
 
-  ind_fit <- which(full_data %in% data)
-  ind_inf <- which(full_data < min(data))
-  ind_sup <- which(full_data > max(data))
-  ind_new <- c(ind_inf, ind_sup)
+  ind_fit <- c(rep(FALSE, n_inf), rep(TRUE, n), rep(FALSE, n_sup)) |> which()
 
-  D_mat_pred <- build_D_mat(n_pred, object$q)
+  D_mat_pred <- build_D_mat(n_tot, object$q)
+  P_pred <- object$lambda * crossprod(D_mat_pred)
+  diag(P_pred[ind_fit, ind_fit]) <- diag(P_pred[ind_fit, ind_fit]) + object$wt
 
-  D1_inf <- D_mat_pred[ind_inf, ind_fit, drop = FALSE]
-  D1_sup <- D_mat_pred[ind_sup - object$q, ind_fit, drop = FALSE]
-  D1 <- rbind(D1_inf, D1_sup)
+  Psi_pred <- P_pred |> chol() |> chol2inv() # unconstrained variance / covariance matrix
 
-  D2_inf <- D_mat_pred[ind_inf, ind_inf, drop = FALSE]
-  D2_sup <- D_mat_pred[ind_sup - object$q, ind_sup, drop = FALSE]
-  D2 <- blockdiag(D2_inf, D2_sup)
-
-  D2_inv <- if (n_new == 0) matrix(0, 0, 0) else solve(D2)
-
-  A_pred <- matrix(0, n_pred, n)
-  A_pred[ind_fit,] <- object$U
-  A_pred[ind_new,] <- - D2_inv %*% D1 %*% object$U
-
-  y_pred <- c(A_pred %*% object$beta_hat)
-  std_y_pred <- sqrt(rowSums(A_pred * (A_pred %*% object$Psi)))
+  y_pred <- c(Psi_pred[,ind_fit] %*% (object$wt * object$z))
+  std_y_pred <- sqrt(diag(Psi_pred))
 
   names(y_pred) <- names(std_y_pred) <- full_data
 
@@ -509,33 +498,41 @@ predict.WH_2d <- function(object, newdata = NULL, ...) {
 
   data <- dimnames(object$y) |> lapply(as.numeric)
   full_data <- map2(data, newdata, \(x,y) sort(union(x, y)))
-  ind_fit <- map2(data, full_data, \(x,y) which(y %in% x))
 
   n <- map(data, length, "integer")
   n_inf <- map2(data, full_data, \(x,y) sum(y < min(x)), "integer")
   n_sup <- map2(data, full_data, \(x,y) sum(y > max(x)), "integer")
-  n_pred <- n + n_inf + n_sup
+  n_tot <- n + n_inf + n_sup
 
-  wt_pred <- matrix(0, n_pred[[1]], n_pred[[2]])
-  wt_pred[ind_fit[[1]], ind_fit[[2]]] <- object$wt
-
-  # W_pred <- diag(wt_pred) # extended weight matrix
-  D_mat_pred <- map2(n_pred, object$q, build_D_mat) # extended difference matrices
-  P_pred <- object$lambda[[1]] * diag(n_pred[[2]]) %x% crossprod(D_mat_pred[[1]]) +
-    object$lambda[[2]] * crossprod(D_mat_pred[[2]]) %x% diag(n_pred[[1]]) # extended penalization matrix
-  diag(P_pred) <- diag(P_pred) + c(wt_pred)
-  Psi_pred <- P_pred |> chol() |> chol2inv() # unconstrained variance / covariance matrix
+  prod_n <- prod(n)
+  prod_n_tot <- prod(n_inf + n + n_sup)
 
   ind_rows <- c(rep(FALSE, n_inf[[1]]), rep(TRUE, n[[1]]), rep(FALSE, n_sup[[1]]))
-  ind_coef_2d <- c(rep(FALSE, n_pred[[1]] * n_inf[[2]]), rep(ind_rows, n[[2]])) |> which()
+  ind_fit <- c(rep(FALSE, n_tot[[1]] * n_inf[[2]]), rep(ind_rows, n[[2]])) |> which()
 
-  Psi_inv <- Psi_pred[ind_coef_2d, ind_coef_2d] |> chol() |> chol2inv()
-  A_pred <- Psi_pred[,ind_coef_2d] %*% Psi_inv
+  D_mat_pred <- map2(n_tot, object$q, build_D_mat) # extended difference matrices
+  P_pred <- object$lambda[[1]] * diag(n_tot[[2]]) %x% crossprod(D_mat_pred[[1]]) +
+    object$lambda[[2]] * crossprod(D_mat_pred[[2]]) %x% diag(n_tot[[1]]) # extended penalization matrix
+  diag(P_pred[ind_fit, ind_fit]) <- diag(P_pred[ind_fit, ind_fit]) + c(object$wt)
 
-  y_pred <- c(A_pred %*% c(object$y_hat))
-  std_y_pred <- sqrt(rowSums(A_pred * (A_pred %*% (object$U %*% object$Psi %*% t(object$U)))))
+  Psi <- object$U %*% object$Psi %*% t(object$U)
 
-  dim(y_pred) <- dim(std_y_pred) <- n_pred # set dimension for output matrices
+  P_12 <- P_pred[ind_fit, - ind_fit]
+  P_22_m <- P_pred[- ind_fit, - ind_fit] |> chol() |> chol2inv()
+
+  P_aux <- P_12 %*% P_22_m
+  P_aux_2 <- Psi %*% P_aux
+
+  Psi_pred <- matrix(0, prod_n_tot, prod_n_tot)
+  Psi_pred[ind_fit, ind_fit] <- Psi
+  Psi_pred[ind_fit, - ind_fit] <- - P_aux_2
+  Psi_pred[- ind_fit, ind_fit] <- t(Psi_pred[ind_fit, - ind_fit])
+  Psi_pred[- ind_fit, - ind_fit] <- t(P_aux) %*% P_aux_2 + P_22_m
+
+  y_pred <- c(Psi_pred[,ind_fit] %*% c(object$wt * object$z))
+  std_y_pred <- sqrt(diag(Psi_pred))
+
+  dim(y_pred) <- dim(std_y_pred) <- n_tot # set dimension for output matrices
   dimnames(y_pred) <- dimnames(std_y_pred) <- full_data # set names for output matrices
 
   object$y_pred <- y_pred
@@ -808,7 +805,8 @@ plot.WH_2d <- function(x, what = "y_hat", trans, ...) {
   x <- unique(df$x)
   t <- unique(df$t)
 
-  data <- matrix(c(df[[what]]), length(t), length(x), byrow = TRUE)
+  data <- matrix(c(if (what == "edf") df[["edf_obs"]] else df[[what]]),
+                 length(t), length(x), byrow = TRUE)
 
   graphics::contour(
     t, x, data,
@@ -862,7 +860,7 @@ WH_1d_fixed_lambda <- function(d, ec, y, wt, lambda = 1e3, q = 2, p,
     z <- y
     wt_pos <- c(wt)[which_pos]
     z_pos <- c(z)[which_pos]
-    tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+    tUWU <- crossprod(sqrt(wt_pos) * U_pos)
     tUWz <- t(U_pos) %*% (wt_pos * z_pos)
 
   } else {
@@ -888,7 +886,7 @@ WH_1d_fixed_lambda <- function(d, ec, y, wt, lambda = 1e3, q = 2, p,
       z <- y_hat + d / wt - 1
       wt_pos <- c(wt)[which_pos]
       z_pos <- c(z)[which_pos]
-      tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+      tUWU <- crossprod(sqrt(wt_pos) * U_pos)
       tUWz <- t(U_pos) %*% (wt_pos * z_pos)
     }
 
@@ -929,7 +927,7 @@ WH_1d_fixed_lambda <- function(d, ec, y, wt, lambda = 1e3, q = 2, p,
   names(y_hat) <- names(std_y_hat) <- names(res) <- names(edf_obs) <-
     names(wt) <- names(z) <- names(y) # set names for output vectors
 
-  out <- list(y = y, wt = wt, y_hat = y_hat, std_y_hat = std_y_hat, res = res, edf_obs = edf_obs,
+  out <- list(y = y, wt = wt, z = z, y_hat = y_hat, std_y_hat = std_y_hat, res = res, edf_obs = edf_obs,
               beta_hat = beta_hat, edf_par = edf_par, diagnosis = diagnosis,
               U = U, Psi = Psi, lambda = lambda, p = p, q = q)
   class(out) <- "WH_1d"
@@ -972,7 +970,7 @@ WH_1d_outer <- function(d, ec, y, wt, q = 2, p, criterion = "REML", lambda = 1e3
     z <- y
     wt_pos <- c(wt)[which_pos]
     z_pos <- c(z)[which_pos]
-    tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+    tUWU <- crossprod(sqrt(wt_pos) * U_pos)
     tUWz <- t(U_pos) %*% (wt_pos * z_pos)
 
   } else {
@@ -1008,7 +1006,7 @@ WH_1d_outer <- function(d, ec, y, wt, q = 2, p, criterion = "REML", lambda = 1e3
         z <- y_hat + d / wt - 1
         wt_pos <- c(wt)[which_pos]
         z_pos <- c(z)[which_pos]
-        tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+        tUWU <- crossprod(sqrt(wt_pos) * U_pos)
         tUWz <- t(U_pos) %*% (wt_pos * z_pos)
       }
 
@@ -1086,7 +1084,7 @@ WH_1d_perf <- function(d, ec, y, wt, q = 2, p, criterion = "REML", lambda = 1e3,
     z <- y
     wt_pos <- c(wt)[which_pos]
     z_pos <- c(z)[which_pos]
-    tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+    tUWU <- crossprod(sqrt(wt_pos) * U_pos)
     tUWz <- t(U_pos) %*% (wt_pos * z_pos)
 
   } else {
@@ -1112,7 +1110,7 @@ WH_1d_perf <- function(d, ec, y, wt, q = 2, p, criterion = "REML", lambda = 1e3,
       z <- y_hat + d / wt - 1
       wt_pos <- c(wt)[which_pos]
       z_pos <- c(z)[which_pos]
-      tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+      tUWU <- crossprod(sqrt(wt_pos) * U_pos)
       tUWz <- t(U_pos) %*% (wt_pos * z_pos)
     }
 
@@ -1216,7 +1214,7 @@ WH_2d_fixed_lambda <- function(d, ec, y, wt, lambda = c(1e3, 1e3), q = c(2, 2), 
     z <- y
     wt_pos <- c(wt)[which_pos]
     z_pos <- c(z)[which_pos]
-    tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+    tUWU <- crossprod(sqrt(wt_pos) * U_pos)
     tUWz <- t(U_pos) %*% (wt_pos * z_pos)
 
   } else {
@@ -1245,7 +1243,7 @@ WH_2d_fixed_lambda <- function(d, ec, y, wt, lambda = c(1e3, 1e3), q = c(2, 2), 
       z <- y_hat + d / wt - 1
       wt_pos <- c(wt)[which_pos]
       z_pos <- c(z)[which_pos]
-      tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+      tUWU <- crossprod(sqrt(wt_pos) * U_pos)
       tUWz <- t(U_pos) %*% (wt_pos * z_pos)
     }
 
@@ -1289,7 +1287,7 @@ WH_2d_fixed_lambda <- function(d, ec, y, wt, lambda = c(1e3, 1e3), q = c(2, 2), 
   dimnames(y_hat) <- dimnames(std_y_hat) <- dimnames(res) <- dimnames(edf_obs) <-
     dimnames(wt) <- dimnames(y) # set names for output matrices
 
-  out <- list(y = y, wt = wt, y_hat = y_hat, std_y_hat = std_y_hat, res = res, edf_obs = edf_obs,
+  out <- list(y = y, wt = wt, z = z, y_hat = y_hat, std_y_hat = std_y_hat, res = res, edf_obs = edf_obs,
               beta_hat = beta_hat, edf_par = edf_par, diagnosis = diagnosis,
               U = U, Psi = Psi, lambda = lambda, p = p, q = q)
   class(out) <- "WH_2d"
@@ -1327,7 +1325,7 @@ WH_2d_outer <- function(d, ec, y, wt, q = c(2, 2), p, criterion = "REML", lambda
     z <- y
     wt_pos <- c(wt)[which_pos]
     z_pos <- c(z)[which_pos]
-    tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+    tUWU <- crossprod(sqrt(wt_pos) * U_pos)
     tUWz <- t(U_pos) %*% (wt_pos * z_pos)
 
   } else {
@@ -1365,7 +1363,7 @@ WH_2d_outer <- function(d, ec, y, wt, q = c(2, 2), p, criterion = "REML", lambda
         z <- y_hat + d / wt - 1
         wt_pos <- c(wt)[which_pos]
         z_pos <- c(z)[which_pos]
-        tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+        tUWU <- crossprod(sqrt(wt_pos) * U_pos)
         tUWz <- t(U_pos) %*% (wt_pos * z_pos)
       }
 
@@ -1446,7 +1444,7 @@ WH_2d_perf <- function(d, ec, y, wt, q = c(2, 2), p, criterion = "REML", lambda 
     z <- y
     wt_pos <- c(wt)[which_pos]
     z_pos <- c(z)[which_pos]
-    tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+    tUWU <- crossprod(sqrt(wt_pos) * U_pos)
     tUWz <- t(U_pos) %*% (wt_pos * z_pos)
 
   } else {
@@ -1472,7 +1470,7 @@ WH_2d_perf <- function(d, ec, y, wt, q = c(2, 2), p, criterion = "REML", lambda 
       z <- y_hat + d / wt - 1
       wt_pos <- c(wt)[which_pos]
       z_pos <- c(z)[which_pos]
-      tUWU <- t(U_pos) %*% (wt_pos * U_pos)
+      tUWU <- crossprod(sqrt(wt_pos) * U_pos)
       tUWz <- t(U_pos) %*% (wt_pos * z_pos)
     }
 
