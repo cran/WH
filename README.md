@@ -10,24 +10,147 @@
 
 ## What is Whittaker-Henderson smoothing ?
 
-Whittaker-Henderson (WH) smoothing is a gradation method aimed at
-correcting the effect of sampling fluctuations on an observation vector.
-It is applied to evenly-spaced discrete observations. Initially proposed
-by Whittaker (1922) for constructing mortality tables and further
-developed by the works of Henderson (1924), it remains one of the most
-popular methods among actuaries for constructing experience tables in
-life insurance. Extending to two-dimensional tables, it can be used for
-studying various risks, including but not limited to: mortality,
-disability, long-term care, lapse, mortgage default, and unemployment.
+### Origin
+
+Whittaker-Henderson (WH) smoothing is a graduation method designed to
+mitigate the effects of sampling fluctuations in a vector of evenly
+spaced discrete observations. Although this method was originally
+proposed by Bohlmann (1899), it is named after Whittaker (1923), who
+applied it to graduate mortality tables, and Henderson (1924), who
+popularized it among actuaries in the United States. The method was
+later extended to two dimensions by Knorr (1984). WH smoothing may be
+used to build experience tables for a broad spectrum of life insurance
+risks, such as mortality, disability, long-term care, lapse, mortgage
+default and unemployment.
+
+### The one-dimensional case
+
+Let $\mathbf{y}$ be a vector of observations and $\mathbf{w}$ a vector
+of positive weights, both of size $n$. The estimator associated with
+Whittaker-Henderson smoothing is given by:
+
+$$
+\hat{\mathbf{y}} = \underset{\boldsymbol{\theta}}{\text{argmin}}\{F(\mathbf{y},\mathbf{w},\boldsymbol{\theta}) + R_{\lambda,q}(\boldsymbol{\theta})\}
+$$
+
+where:
+
+- $F(\mathbf{y},\mathbf{w},\boldsymbol{\theta}) = \underset{i = 1}{\overset{n}{\sum}} w_i(y_i - \theta_i)^2$
+  represents a fidelity criterion with respect to the observations,
+
+- $R_{\lambda,q}(\boldsymbol{\theta}) = \lambda \underset{i = 1}{\overset{n - q}{\sum}} (\Delta^q\boldsymbol{\theta})_i^2$
+  represents a smoothness criterion.
+
+In the latter expression, $\lambda \ge 0$ is a smoothing parameter and
+$\Delta^q$ denotes the forward difference operator of order $q$, such
+that for any $i\in\{1,\dots,n - q\}$:
+
+$$
+(\Delta^q\boldsymbol{\theta})_i = \underset{k = 0}{\overset{q}{\sum}} \begin{pmatrix}q \\ k\end{pmatrix}(- 1)^{q - k} \theta_{i + k}.
+$$
+
+Define $W = \text{Diag}(\mathbf{w})$, the diagonal matrix of weights,
+and $D_{n,q}$ as the order $q$ difference matrix of dimensions
+$(n-q) \times n$, such that
+$(D_{n,q}\boldsymbol{\theta})_i = (\Delta^q\boldsymbol{\theta})_i$ for
+all $i \in [1, n-q]$. The first- and second-order difference matrices
+are given by:
+
+$$
+D_{n,1} = \begin{bmatrix}
+-1 & 1 & 0 & \ldots & 0 \\
+0 & -1 & 1 & \ldots & 0 \\
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+0 & \ldots & 0 & -1 & 1 \\
+\end{bmatrix}
+\quad\text{and}\quad
+D_{n,2} = \begin{bmatrix}
+1 & -2 & 1 & 0 & \ldots & 0 \\
+0 & 1 & -2 & 1 & \ldots & 0 \\
+\vdots & \vdots & \vdots & \vdots & \ddots & \vdots \\
+0 & \ldots & 0 & 1 & -2 & 1 \\
+\end{bmatrix}.
+$$
+
+while higher-order difference matrices follow the recursive formula
+$D_{n,q} = D_{n - 1,q - 1}D_{n,1}$. The fidelity and smoothness criteria
+can be rewritten with matrix notations as:
+
+$$
+F(\mathbf{y},\mathbf{w},\boldsymbol{\theta}) = (\mathbf{y} - \boldsymbol{\theta})^TW(\mathbf{y} - \boldsymbol{\theta}) \quad \text{and} \quad R_{\lambda,q}(\boldsymbol{\theta}) = \lambda\boldsymbol{\theta}^TD_{n,q}^TD_{n,q}\boldsymbol{\theta}
+$$
+
+and the WH smoothing estimator thus becomes:
+
+$$
+\hat{\mathbf{y}} = \underset{\boldsymbol{\theta}}{\text{argmin}} \left\lbrace(\mathbf{y} - \boldsymbol{\theta})^TW(\mathbf{y} - \boldsymbol{\theta}) + \boldsymbol{\theta}^TP_{\lambda}\boldsymbol{\theta}\right\rbrace
+$$
+
+where $P_{\lambda} = \lambda D_{n,q}^TD_{n,q}$.
+
+### The two-dimensional case
+
+In the two-dimensional case, consider a matrix $Y$ of observations and a
+matrix $\Omega$ of non-negative weights, both of dimensions
+$n_x \times n_z$. The WH smoothing estimator solves:
+
+$$
+\widehat{Y} = \underset{\Theta}{\text{argmin}}\{F(Y,\Omega, \Theta) + R_{\lambda,q}(\Theta)\}
+$$
+
+where:
+
+- $F(Y,\Omega, \Theta) = \sum_{i = 1}^{n_x}\sum_{j = 1}^{n_z} \Omega_{i,j}(Y_{i,j} - \Theta_{i,j})^2$
+  represents a fidelity criterion with respect to the observations,
+
+- $R_{\lambda,q}(\Theta) = \lambda_x \sum_{j = 1}^{n_z}\sum_{i = 1}^{n_x - q_x} (\Delta^{q_x}\Theta_{\bullet,j})_i^2 + \lambda_z \sum_{i = 1}^{n_x}\sum_{j = 1}^{n_z - q_z} (\Delta^{q_z}\Theta_{i,\bullet})_j^2$
+  is a smoothness criterion with $\lambda = (\lambda_x,\lambda_z)$.
+
+This latter criterion adds row-wise and column regularization criteria
+to $\Theta$, with respective orders $q_x$ and $q_z$, weighted by
+non-negative smoothing parameters $\lambda_x$ and $\lambda_z$. In matrix
+notation, let $\mathbf{y} = \textbf{vec}(Y)$,
+$\mathbf{w} = \textbf{vec}(\Omega)$, and
+$\boldsymbol{\theta} = \textbf{vec}(\Theta)$ as the vectors obtained by
+stacking the columns of the matrices $Y$, $\Omega$, and $\Theta$,
+respectively. Additionally, denote $W = \text{Diag}(\mathbf{w})$ and
+$n = n_x \times n_z$. The fidelity and smoothness criteria become:
+
+$$
+\begin{aligned}
+F(\mathbf{y},\mathbf{w}, \boldsymbol{\theta}) &= (\mathbf{y} - \boldsymbol{\theta})^TW(\mathbf{y} - \boldsymbol{\theta}) \\
+R_{\lambda,q}(\boldsymbol{\theta}) &= \boldsymbol{\theta}^{T}(\lambda_x I_{n_z} \otimes D_{n_x,q_x}^{T}D_{n_x,q_x} + \lambda_z D_{n_z,q_z}^{T}D_{n_z,q_z} \otimes I_{n_x}) \boldsymbol{\theta}.
+\end{aligned}
+$$
+
+and the associated estimator takes the same form as in the
+one-dimensional case except
+
+$$P_{\lambda} = \lambda_x I_{n_z} \otimes D_{n_x,q_x}^{T}D_{n_x,q_x} + \lambda_z D_{n_z,q_z}^{T}D_{n_z,q_z} \otimes I_{n_x}.$$
+
+### An explicit solution
+
+If $W + P_{\lambda}$ is invertible, the WH smoothing equation admits the
+closed-form solution:
+
+$$\hat{\mathbf{y}} = (W + P_{\lambda})^{-1}W\mathbf{y}.$$
+
+Indeed, as a minimum, $\hat{\mathbf{y}}$ satisfies:
+
+$$0 = \left.\frac{\partial}{\partial \boldsymbol{\theta}}\right|_{\hat{\mathbf{y}}}\left\lbrace(\mathbf{y} - \boldsymbol{\theta})^{T}W(\mathbf{y} - \boldsymbol{\theta}) + \boldsymbol{\theta}^{T}P_{\lambda}\boldsymbol{\theta}\right\rbrace = - 2 W(y - \hat{\mathbf{y}}) +2P_{\lambda} \hat{\mathbf{y}}.$$
+
+It follows that $(W + P_{\lambda})\hat{\mathbf{y}} = W\mathbf{y}$,
+proving the above result. If $\lambda \neq 0$, $W + P_{\lambda}$ is
+invertible as long as $\mathbf{w}$ has $q$ non-zero elements in the
+one-dimensional case, and $\Omega$ has at least $q_x \times q_z$
+non-zero elements spread across $q_x$ different rows and $q_z$ different
+columns in the two-dimensional case. These conditions are always met in
+real datasets.
 
 ## How to use the package?
 
-The `WH` package may easily be installed from CRAN by running the code
-`install.packages("WH")` in the $\mathsf{R}$ Console.
-
-It features two main functions `WH_1d` and `WH_2d` corresponding to the
-one-dimensional and two-dimensional cases respectively. Two arguments
-are mandatory for those functions:
+The `WH` package features a unique main function `WH`. Two arguments are
+mandatory for this function:
 
 - The vector (or matrix in the two-dimension case) `d` corresponding to
   the number of observed events of interest by age (or by age and
@@ -59,48 +182,35 @@ to use it:
 
 ``` r
 # One-dimensional case
-d <- portfolio_mort$d
-ec <- portfolio_mort$ec
-
-WH_1d_fit <- WH_1d(d, ec)
-Using outer iteration / Brent method
+WH_1d_fit <- WH(portfolio_mort$d, portfolio_mort$ec)
+Outer procedure completed in 14 iterations, smoothing parameters: 9327, final LAML: 32.1
 ```
 
 ``` r
 # Two-dimensional case
-keep_age <- which(rowSums(portfolio_LTC$ec) > 5e2)
-keep_duration <- which(colSums(portfolio_LTC$ec) > 1e3)
-
-d  <- portfolio_LTC$d[keep_age, keep_duration]
-ec <- portfolio_LTC$ec[keep_age, keep_duration]
-
-WH_2d_fit <- WH_2d(d, ec)
-Using performance iteration / Nelder-Mead method
+WH_2d_fit <- WH(portfolio_LTC$d, portfolio_LTC$ec)
+Outer procedure completed in 63 iterations, smoothing parameters: 1211.41,    1.09, final LAML: 276
 ```
 
-Functions `WH_1d` and `WH_2d` output objects of class `"WH_1d"` and
-`"WH_2d"` to which additional functions (including generic S3 methods)
-may be applied:
+Function `WH` outputs objects of class `"WH_1d"` and `"WH_2d"` to which
+additional functions (including generic S3 methods) may be applied:
 
 - The `print` function provides a glimpse of the fitted results
 
 ``` r
 WH_1d_fit
-An object fitted using the WH_1D function
-Initial data contains 74 data points:
-  Observation positions:  19  to  92 
-Smoothing parameter selected: 13454 
-Associated degrees of freedom: 7.5 
-```
-
-``` r
+An object fitted using the WH function
+Initial data contains 45 data points:
+  Observation positions:  50  to  94 
+Smoothing parameter selected: 9327 
+Associated degrees of freedom: 6.8 
 WH_2d_fit
-An object fitted using the WH_2D function
-Initial data contains 90 data points:
-  First dimension:  75  to  89 
-  Second dimension:  0  to  5 
-Smoothing parameters selected: 301   2 
-Associated degrees of freedom: 13 
+An object fitted using the WH function
+Initial data contains 450 data points:
+  First dimension:  70  to  99 
+  Second dimension:  0  to  14 
+Smoothing parameters selected: 1211.4    1.1 
+Associated degrees of freedom: 47 
 ```
 
 - The `plot` function generates rough plots of the model fit, the
@@ -147,17 +257,19 @@ plot(WH_2d_fit, "std_y_hat")
   Durban, and Lee 2021 to understand why this is required).
 
 ``` r
-WH_1d_fit |> predict(newdata = 18:99) |> plot()
+WH_1d_fit |> predict(newdata = 40:99) |> plot()
 ```
 
 <img src="man/figures/README-predict-1.png" width="100%" style="display: block; margin: auto;" />
 
 ``` r
-WH_2d_fit |> predict(newdata = list(age = 50:99,
-                                    duration = 0:19)) |> plot()
+WH_2d_fit |> predict(newdata = list(age = 60:109, duration = 0:19)) |> plot()
 ```
 
 <img src="man/figures/README-predict-2.png" width="100%" style="display: block; margin: auto;" />
+
+- The `vcov` may be used to retrieve the variance-covariance matrix of
+  the model if necessary.
 
 - Finally the `output_to_df` function converts an `"WH_1d"` or `"WH_2d"`
   object into a `data.frame`. Information about the fit is discarded in
@@ -171,13 +283,21 @@ WH_2d_df <- WH_2d_fit |> output_to_df()
 
 ## Further WH smoothing theory
 
-See the package vignette or the upcoming paper available
+See the upcoming paper available
 [here](https://hal.science/hal-04124043)
 
 ## References
 
 <div id="refs" class="references csl-bib-body hanging-indent"
 entry-spacing="0">
+
+<div id="ref-bohlmann1899ausgleichungsproblem" class="csl-entry">
+
+Bohlmann, Georg. 1899. “Ein Ausgleichungsproblem.” *Nachrichten von Der
+Gesellschaft Der Wissenschaften Zu Göttingen, Mathematisch-Physikalische
+Klasse* 1899: 260–71.
+
+</div>
 
 <div id="ref-carballo2021prediction" class="csl-entry">
 
@@ -194,10 +314,17 @@ the Actuarial Society of America* 25: 29–40.
 
 </div>
 
-<div id="ref-whittaker1922new" class="csl-entry">
+<div id="ref-knorr1984multidimensional" class="csl-entry">
 
-Whittaker, Edmund T. 1922. “On a New Method of Graduation.” *Proceedings
-of the Edinburgh Mathematical Society* 41: 63–75.
+Knorr, Frank E. 1984. “Multidimensional Whittaker-Henderson Graduation.”
+*Transactions of Society of Actuaries* 36: 213–55.
+
+</div>
+
+<div id="ref-whittaker1923new" class="csl-entry">
+
+Whittaker, Edmund Taylor. 1923. “On a New Method of Graduation.”
+*Proceedings of the Edinburgh Mathematical Society* 41: 63–75.
 
 </div>
 

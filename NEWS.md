@@ -1,3 +1,29 @@
+# WH 2.0.0
+
+This version introduces a complete overhaul of the package, with substantial improvements to both the core computational engine and the user-facing interface.
+
+## Computational changes
+
+The main change in this version is the exploitation of the banded structure of the penalization matrix, which allows for tremendous savings in both computation time and memory footprint.
+
+* The package now uses Rcpp and calls directly Lapack functions for banded matrices when available. 
+
+* Some additional functions have also been coded using Rcpp. The `backsolve` function for banded matrix was also recoded although it already exists in Lapack because the Lapack version overwrites the Cholesky factor so a copy has to be made beforehand.
+
+* Parameter estimation now rely on backward-forward solves from the Cholesky factor instead of forming the variance-covariance matrix explicitly.
+
+* By default, only the diagonal of the variance-covariance matrix is now computed (which is sufficient for credibility intervals). The full matrix can still be retrieved using the newly introduced `vcov()` method if necessary.
+
+## User Interface changes
+
+* The two main functions from earlier versions have been merged into a single unified function: `WH()`.
+
+* Performance iteration and rank reduction are no longer available, as they no longer provide meaningful benefits with the new implementation. Indeed, the full-rank version is now efficient enough to handle several thousand observation points without optimization tricks.
+
+## Other changes
+
+* Some minor changes have been made to the example datasets to better align the characteristics of the mortality and long-term care datasets
+
 # WH 1.1.2
 
 * Greatly increased tolerance from 1e-6 to 1e-2 to remove a lone failing test which only occurs when using MKL BLAS
